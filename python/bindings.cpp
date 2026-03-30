@@ -28,7 +28,7 @@ public:
 };
 
 PYBIND11_MODULE(blade, m) {
-    m.doc() = "BLADE: Backpropagation Library for Automatic Differentiation and Evaluation";
+    m.doc() = "BLADE: Backpropagation Library for Automatic Differentiation";
 
     // ---- Tensor -------------------------------------------------------------
     py::class_<Tensor, std::shared_ptr<Tensor>>(m, "Tensor")

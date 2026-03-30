@@ -1,6 +1,6 @@
 # BLADE
 
-Backpropagation Library for Automatic Differentiation and Evaluation.
+Backpropagation Library for Automatic Differentiation.
 
 A mini deep learning framework in C++ with a Python binding via pybind11.
 Built for the course Machine Learning Systems Implementation (CSCI 637).
