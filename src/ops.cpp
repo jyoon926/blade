@@ -420,15 +420,93 @@ Tensor mean(const Tensor& a, int dim, bool keepdim) {
 }
 
 Tensor max(const Tensor& a) {
-    // TODO: with backward
-    float m = *std::max_element(a.data_ptr(), a.data_ptr() + a.numel());
-    return Tensor::full({1}, m);
+    const size_t n = a.numel();
+    const float* pa = a.data_ptr();
+ 
+    size_t argmax = 0;
+    float  best   = pa[0];
+    for (size_t i = 1; i < n; ++i) {
+        if (pa[i] > best) { best = pa[i]; argmax = i; }
+    }
+    Tensor out = Tensor::full({1}, best);
+ 
+    if (a.requires_grad()) {
+        out.set_requires_grad(true);
+        auto sa = share(a);
+        auto fn = [sa, argmax](const Tensor& g) -> std::vector<Tensor> {
+            Tensor ga = Tensor::zeros(sa->shape());
+            ga.data_ptr()[argmax] = g.data_ptr()[0];
+            return {ga};
+        };
+        out.set_grad_fn(std::make_shared<Node>("MaxBackward", fn,
+            std::vector<std::shared_ptr<Tensor>>{sa}));
+    }
+    return out;
 }
 
 Tensor max(const Tensor& a, int dim, bool keepdim) {
-    // TODO
-    (void)a; (void)dim; (void)keepdim;
-    return Tensor({1});
+    const int ndim = (int)a.ndim();
+ 
+    if (dim < 0) dim += ndim;
+    if (dim < 0 || dim >= ndim)
+        throw std::runtime_error("max: dim " + std::to_string(dim) +
+            " out of range for tensor with " + std::to_string(ndim) + " dims");
+ 
+    const auto& in_shape = a.shape();
+    const size_t reduce_size = in_shape[dim];
+ 
+    size_t outer = 1, inner = 1;
+    for (int i = 0;       i < dim;  ++i) outer *= in_shape[i];
+    for (int i = dim + 1; i < ndim; ++i) inner *= in_shape[i];
+ 
+    // Build output shape.
+    std::vector<size_t> out_shape;
+    out_shape.reserve(keepdim ? ndim : ndim - 1);
+    for (int i = 0; i < ndim; ++i) {
+        if (i == dim) { if (keepdim) out_shape.push_back(1); }
+        else          { out_shape.push_back(in_shape[i]); }
+    }
+    if (out_shape.empty()) out_shape.push_back(1);
+ 
+    Tensor out = Tensor::zeros(out_shape);
+    const float* pa = a.data_ptr();
+    float*       po = out.data_ptr();
+ 
+    const size_t out_n = outer * inner;
+    auto argmax_indices = std::make_shared<std::vector<size_t>>(out_n);
+ 
+    for (size_t outer_i = 0; outer_i < outer; ++outer_i) {
+        for (size_t inner_i = 0; inner_i < inner; ++inner_i) {
+            const size_t out_idx  = outer_i * inner + inner_i;
+            const size_t in_base  = outer_i * reduce_size * inner + inner_i;
+ 
+            float  best   = pa[in_base];   // k = 0
+            size_t best_k = 0;
+            for (size_t k = 1; k < reduce_size; ++k) {
+                const float v = pa[in_base + k * inner];
+                if (v > best) { best = v; best_k = k; }
+            }
+            po[out_idx] = best;
+            (*argmax_indices)[out_idx] = in_base + best_k * inner;
+        }
+    }
+ 
+    if (a.requires_grad()) {
+        out.set_requires_grad(true);
+        auto sa = share(a);
+        auto fn = [sa, argmax_indices](const Tensor& g) -> std::vector<Tensor> {
+            Tensor ga = Tensor::zeros(sa->shape());
+            const float* pg  = g.data_ptr();
+            float*       pga = ga.data_ptr();
+            const size_t out_n = argmax_indices->size();
+            for (size_t out_idx = 0; out_idx < out_n; ++out_idx)
+                pga[(*argmax_indices)[out_idx]] += pg[out_idx];
+            return {ga};
+        };
+        out.set_grad_fn(std::make_shared<Node>("MaxDimBackward", fn,
+            std::vector<std::shared_ptr<Tensor>>{sa}));
+    }
+    return out;
 }
 
 // ---- matmul -----------------------------------------------------------------

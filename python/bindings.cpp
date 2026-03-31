@@ -120,6 +120,11 @@ PYBIND11_MODULE(blade, m) {
     ops.def("sum",        py::overload_cast<const Tensor&, int, bool>(&ops::sum),
             py::arg("a"), py::arg("dim"), py::arg("keepdim") = false);
     ops.def("mean",       py::overload_cast<const Tensor&>(&ops::mean));
+    ops.def("mean",       py::overload_cast<const Tensor&, int, bool>(&ops::mean),
+            py::arg("a"), py::arg("dim"), py::arg("keepdim") = false);
+    ops.def("max",        py::overload_cast<const Tensor&>(&ops::max));
+    ops.def("max",        py::overload_cast<const Tensor&, int, bool>(&ops::max),
+            py::arg("a"), py::arg("dim"), py::arg("keepdim") = false);
     ops.def("reshape",    &ops::reshape);
     ops.def("transpose",  &ops::transpose);
     ops.def("flatten",    &ops::flatten,
