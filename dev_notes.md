@@ -18,6 +18,7 @@
 - Dataset base class and DataLoader with shuffle (collate is a stub)
 - MNIST IDX binary reader, normalizes pixels to [0, 1]
 - pybind11 bindings for all modules, PyModule trampoline for Python subclassing
+- dim-wise sum/mean (needed for softmax, cross_entropy, loss reductions)
 
 ## bugs fixed
 
@@ -31,7 +32,6 @@
 - conv2d forward (im2col -> matmul) and backward
 - max_pool2d forward and backward (need to save argmax mask)
 - batch_norm per-channel mean/var and backward
-- dim-wise sum/mean (needed for softmax, cross_entropy, loss reductions)
 - softmax and log_softmax (numerically stable)
 - cross_entropy and nll_loss (need a gather op)
 - DataLoader::collate (stack samples into a batch tensor)

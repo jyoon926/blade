@@ -346,9 +346,63 @@ Tensor sum(const Tensor& a) {
 }
 
 Tensor sum(const Tensor& a, int dim, bool keepdim) {
-    // TODO: implement dim-wise sum with backward
-    (void)dim; (void)keepdim;
-    return Tensor({1});
+    
+    if (dim < 0) dim += ndim;
+    if (dim < 0 || dim >= ndim)
+        throw std::runtime_error("sum: dim " + std::to_string(dim) + " out of range for tensor with " + std::to_string(ndim) + " dims");
+ 
+    const auto& in_shape = a.shape();
+    const size_t reduce_size = in_shape[dim];
+ 
+    size_t outer = 1, inner = 1;
+    for (int i = 0;       i < dim;  ++i) outer *= in_shape[i];
+    for (int i = dim + 1; i < ndim; ++i) inner *= in_shape[i];
+ 
+    std::vector<size_t> out_shape;
+    out_shape.reserve(keepdim ? ndim : ndim - 1);
+    for (int i = 0; i < ndim; ++i) {
+        if (i == dim) { if (keepdim) out_shape.push_back(1); }
+        else          { out_shape.push_back(in_shape[i]); }
+    }
+    if (out_shape.empty()) out_shape.push_back(1);  // scalar result
+ 
+    Tensor out = Tensor::zeros(out_shape);
+    const float* pa = a.data_ptr();
+    float*       po = out.data_ptr();
+ 
+    #pragma omp parallel for num_threads(NUM_THREADS) schedule(static)
+    for (size_t outer_i = 0; outer_i < outer; ++outer_i) {
+        for (size_t inner_i = 0; inner_i < inner; ++inner_i) {
+            float s = 0.f;
+            const size_t in_base = outer_i * reduce_size * inner + inner_i;
+            for (size_t k = 0; k < reduce_size; ++k)
+                s += pa[in_base + k * inner];
+            po[outer_i * inner + inner_i] = s;
+        }
+    }
+ 
+    if (a.requires_grad()) {
+        out.set_requires_grad(true);
+        auto sa = share(a);
+        auto fn = [sa, dim, outer, inner, reduce_size](const Tensor& g) -> std::vector<Tensor> {
+            Tensor ga = Tensor::zeros(sa->shape());
+            const float* pg  = g.data_ptr();
+            float*       pga = ga.data_ptr();
+            #pragma omp parallel for num_threads(NUM_THREADS) schedule(static)
+            for (size_t outer_i = 0; outer_i < outer; ++outer_i) {
+                for (size_t inner_i = 0; inner_i < inner; ++inner_i) {
+                    const float grad_val = pg[outer_i * inner + inner_i];
+                    const size_t in_base = outer_i * reduce_size * inner + inner_i;
+                    for (size_t k = 0; k < reduce_size; ++k)
+                        pga[in_base + k * inner] += grad_val;
+                }
+            }
+            return {ga};
+        };
+        out.set_grad_fn(std::make_shared<Node>("SumDimBackward", fn,
+            std::vector<std::shared_ptr<Tensor>>{sa}));
+    }
+    return out;
 }
 
 Tensor mean(const Tensor& a) {
@@ -357,9 +411,12 @@ Tensor mean(const Tensor& a) {
 }
 
 Tensor mean(const Tensor& a, int dim, bool keepdim) {
-    // TODO
-    (void)a; (void)dim; (void)keepdim;
-    return Tensor({1});
+    const int ndim = (int)a.ndim();
+    int d = dim < 0 ? dim + ndim : dim;
+    if (d < 0 || d >= ndim)
+        throw std::runtime_error("mean: dim out of range");
+    const float scale = 1.f / (float)a.shape()[d];
+    return mul(sum(a, dim, keepdim), scale);
 }
 
 Tensor max(const Tensor& a) {
