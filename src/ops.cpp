@@ -668,16 +668,140 @@ Tensor tanh(const Tensor& a) {
 }
 
 Tensor softmax(const Tensor& a, int dim) {
-    // TODO: numerically stable softmax along `dim` with backward
-    (void)dim;
-    Tensor out(a.shape());
+    const int ndim = (int)a.ndim();
+    if (dim < 0) dim += ndim;
+    if (dim < 0 || dim >= ndim)
+        throw std::runtime_error("softmax: dim out of range");
+ 
+    const auto& in_shape = a.shape();
+    const size_t reduce_size = in_shape[dim];
+ 
+    size_t outer = 1, inner = 1;
+    for (int i = 0;       i < dim;  ++i) outer *= in_shape[i];
+    for (int i = dim + 1; i < ndim; ++i) inner *= in_shape[i];
+ 
+    Tensor out = Tensor::zeros(a.shape());
+    const float* pa = a.data_ptr();
+    float*       po = out.data_ptr();
+ 
+    for (size_t outer_i = 0; outer_i < outer; ++outer_i) {
+        for (size_t inner_i = 0; inner_i < inner; ++inner_i) {
+            const size_t base = outer_i * reduce_size * inner + inner_i;
+ 
+            float max_val = pa[base];
+            for (size_t k = 1; k < reduce_size; ++k)
+                max_val = std::max(max_val, pa[base + k * inner]);
+ 
+            float sum_exp = 0.f;
+            for (size_t k = 0; k < reduce_size; ++k) {
+                float e = std::exp(pa[base + k * inner] - max_val);
+                po[base + k * inner] = e;
+                sum_exp += e;
+            }
+
+            for (size_t k = 0; k < reduce_size; ++k)
+                po[base + k * inner] /= sum_exp;
+        }
+    }
+ 
+    if (a.requires_grad()) {
+        out.set_requires_grad(true);
+        auto sa   = share(a);
+        auto sout = share(out);  // backward needs the softmax output values
+        auto fn = [sout, outer, inner, reduce_size](const Tensor& g) -> std::vector<Tensor> {
+            Tensor ga = Tensor::zeros(sout->shape());
+            const float* ps  = sout->data_ptr();
+            const float* pg  = g.data_ptr();
+            float*       pga = ga.data_ptr();
+ 
+            for (size_t outer_i = 0; outer_i < outer; ++outer_i) {
+                for (size_t inner_i = 0; inner_i < inner; ++inner_i) {
+                    const size_t base = outer_i * reduce_size * inner + inner_i;
+ 
+                    float dot_gs = 0.f;
+                    for (size_t k = 0; k < reduce_size; ++k)
+                        dot_gs += pg[base + k * inner] * ps[base + k * inner];
+ 
+                    for (size_t k = 0; k < reduce_size; ++k) {
+                        const size_t idx = base + k * inner;
+                        pga[idx] = ps[idx] * (pg[idx] - dot_gs);
+                    }
+                }
+            }
+            return {ga};
+        };
+        out.set_grad_fn(std::make_shared<Node>("SoftmaxBackward", fn,
+            std::vector<std::shared_ptr<Tensor>>{sa}));
+    }
     return out;
 }
 
 Tensor log_softmax(const Tensor& a, int dim) {
-    // TODO: log-softmax along `dim` with backward
-    (void)dim;
-    Tensor out(a.shape());
+    const int ndim = (int)a.ndim();
+    if (dim < 0) dim += ndim;
+    if (dim < 0 || dim >= ndim)
+        throw std::runtime_error("log_softmax: dim out of range");
+ 
+    const auto& in_shape = a.shape();
+    const size_t reduce_size = in_shape[dim];
+ 
+    size_t outer = 1, inner = 1;
+    for (int i = 0;       i < dim;  ++i) outer *= in_shape[i];
+    for (int i = dim + 1; i < ndim; ++i) inner *= in_shape[i];
+ 
+    Tensor out = Tensor::zeros(a.shape());
+    const float* pa = a.data_ptr();
+    float*       po = out.data_ptr();
+ 
+    for (size_t outer_i = 0; outer_i < outer; ++outer_i) {
+        for (size_t inner_i = 0; inner_i < inner; ++inner_i) {
+            const size_t base = outer_i * reduce_size * inner + inner_i;
+ 
+            float max_val = pa[base];
+            for (size_t k = 1; k < reduce_size; ++k)
+                max_val = std::max(max_val, pa[base + k * inner]);
+ 
+            float sum_exp = 0.f;
+            for (size_t k = 0; k < reduce_size; ++k)
+                sum_exp += std::exp(pa[base + k * inner] - max_val);
+ 
+            const float log_sum = std::log(sum_exp);
+            for (size_t k = 0; k < reduce_size; ++k) {
+                const size_t idx = base + k * inner;
+                po[idx] = (pa[idx] - max_val) - log_sum;
+            }
+        }
+    }
+ 
+    if (a.requires_grad()) {
+        out.set_requires_grad(true);
+        auto sa   = share(a);
+        auto sout = share(out);  // backward needs the log_softmax output values
+        auto fn = [sout, outer, inner, reduce_size](const Tensor& g) -> std::vector<Tensor> {
+            Tensor ga = Tensor::zeros(sout->shape());
+            const float* plsm = sout->data_ptr();
+            const float* pg   = g.data_ptr();
+            float*       pga  = ga.data_ptr();
+ 
+            for (size_t outer_i = 0; outer_i < outer; ++outer_i) {
+                for (size_t inner_i = 0; inner_i < inner; ++inner_i) {
+                    const size_t base = outer_i * reduce_size * inner + inner_i;
+ 
+                    float sum_g = 0.f;
+                    for (size_t k = 0; k < reduce_size; ++k)
+                        sum_g += pg[base + k * inner];
+ 
+                    for (size_t k = 0; k < reduce_size; ++k) {
+                        const size_t idx = base + k * inner;
+                        pga[idx] = pg[idx] - std::exp(plsm[idx]) * sum_g;
+                    }
+                }
+            }
+            return {ga};
+        };
+        out.set_grad_fn(std::make_shared<Node>("LogSoftmaxBackward", fn,
+            std::vector<std::shared_ptr<Tensor>>{sa}));
+    }
     return out;
 }
 
