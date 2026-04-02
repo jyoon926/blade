@@ -346,7 +346,7 @@ Tensor sum(const Tensor& a) {
 }
 
 Tensor sum(const Tensor& a, int dim, bool keepdim) {
-    
+    const int ndim = (int)a.ndim();
     if (dim < 0) dim += ndim;
     if (dim < 0 || dim >= ndim)
         throw std::runtime_error("sum: dim " + std::to_string(dim) + " out of range for tensor with " + std::to_string(ndim) + " dims");
