@@ -106,6 +106,10 @@ PYBIND11_MODULE(blade, m) {
     ops.def("mul",        py::overload_cast<const Tensor&, const Tensor&>(&ops::mul));
     ops.def("div",        py::overload_cast<const Tensor&, const Tensor&>(&ops::div));
     ops.def("neg",        &ops::neg);
+    ops.def("abs",        &ops::abs);
+    ops.def("clamp",      &ops::clamp);
+    ops.def("leaky_relu", &ops::leaky_relu,
+            py::arg("a"), py::arg("neg_slope") = 0.01f);
     ops.def("pow",        &ops::pow);
     ops.def("sqrt",       &ops::sqrt);
     ops.def("exp",        &ops::exp);

@@ -34,6 +34,7 @@ set(BLADE_SOURCES
 )
 
 add_library(blade_core STATIC ${BLADE_SOURCES})
+set_target_properties(blade_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_include_directories(blade_core PUBLIC include)
 target_link_libraries(blade_core PUBLIC OpenMP::OpenMP_CXX)
 target_compile_options(blade_core PRIVATE -O3 -Wall -Wextra -march=native)

@@ -20,6 +20,8 @@ public:
     // Call the backward function and route gradients to inputs.
     void apply(const Tensor& grad_output);
 
+    std::vector<Tensor> compute(const Tensor& grad_output);
+
     const std::string& name() const { return name_; }
     const std::vector<std::shared_ptr<Tensor>>& inputs() const { return inputs_; }
 

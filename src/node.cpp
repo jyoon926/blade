@@ -13,15 +13,17 @@ Node::Node(std::string name, BackwardFn fn,
       backward_fn_(std::move(fn)),
       inputs_(std::move(inputs)) {}
 
-void Node::apply(const Tensor& grad_output) {
+std::vector<Tensor> Node::compute(const Tensor& grad_output) {
     if (!backward_fn_)
         throw std::runtime_error("Node '" + name_ + "' has no backward function");
-
     std::vector<Tensor> grad_inputs = backward_fn_(grad_output);
-
     if (grad_inputs.size() != inputs_.size())
         throw std::runtime_error("Node '" + name_ + "': grad count mismatch");
+    return grad_inputs;
+}
 
+void Node::apply(const Tensor& grad_output) {
+    std::vector<Tensor> grad_inputs = compute(grad_output);
     for (size_t i = 0; i < inputs_.size(); ++i) {
         auto& inp = inputs_[i];
         if (!inp || !inp->requires_grad()) continue;
@@ -53,7 +55,6 @@ static std::vector<Node*> topo_sort(Tensor& root) {
 }
 
 void run_backward(Tensor& root, const Tensor& grad_output) {
-    // Initialise root gradient: ones if not provided (default-constructed Tensor has empty storage).
     Tensor g;
     if (grad_output.storage().empty()) {
         g = Tensor::ones(root.shape());
@@ -67,7 +68,6 @@ void run_backward(Tensor& root, const Tensor& grad_output) {
     }
 
     if (!root.grad_fn()) {
-        // No computation graph – nothing to do.
         return;
     }
 
@@ -80,10 +80,30 @@ void run_backward(Tensor& root, const Tensor& grad_output) {
         auto it = node_grads.find(node);
         if (it == node_grads.end()) continue;
 
-        const Tensor& upstream = it->second;
-        node->apply(upstream);
+        // Compute raw gradients for each input of this node.
+        std::vector<Tensor> grad_inputs = node->compute(it->second);
 
-        // Leaf gradients are accumulated inside Node::apply above.
+        for (size_t i = 0; i < node->inputs().size(); ++i) {
+            auto& inp = node->inputs()[i];
+            if (!inp || !inp->requires_grad()) continue;
+
+            if (inp->is_leaf()) {
+                // Leaf tensor: accumulate gradient directly.
+                inp->accumulate_grad(grad_inputs[i]);
+            } else if (inp->grad_fn()) {
+                // Non-leaf: pass gradient to the next node in the chain.
+                // Use element-wise addition to handle multi-path graphs.
+                Node* inp_fn = inp->grad_fn().get();
+                auto ins_it = node_grads.find(inp_fn);
+                if (ins_it == node_grads.end()) {
+                    node_grads[inp_fn] = grad_inputs[i];
+                } else {
+                    const size_t n = ins_it->second.numel();
+                    for (size_t j = 0; j < n; ++j)
+                        ins_it->second.data_ptr()[j] += grad_inputs[i].data_ptr()[j];
+                }
+            }
+        }
     }
 }
 
