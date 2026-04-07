@@ -20,22 +20,29 @@ find_package(OpenMP REQUIRED)
 set(BLADE_SOURCES
     src/tensor.cpp
     src/node.cpp
-    src/ops.cpp
+    # ops — split by category
+    src/ops/elementwise.cpp
+    src/ops/reductions.cpp
+    src/ops/linalg.cpp
+    src/ops/activations.cpp
+    src/ops/nn.cpp
+    src/ops/shape.cpp
+    # nn
     src/nn/module.cpp
     src/nn/layers.cpp
-    src/nn/activations.cpp
     src/nn/loss.cpp
     src/nn/pooling.cpp
-    src/optim/optimizer.cpp
+    # optim
     src/optim/sgd.cpp
     src/optim/adam.cpp
+    # data
     src/data/dataset.cpp
     src/data/mnist.cpp
 )
 
 add_library(blade_core STATIC ${BLADE_SOURCES})
 set_target_properties(blade_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
-target_include_directories(blade_core PUBLIC include)
+target_include_directories(blade_core PUBLIC include PRIVATE src)
 target_link_libraries(blade_core PUBLIC OpenMP::OpenMP_CXX)
 target_compile_options(blade_core PRIVATE -O3 -Wall -Wextra -march=native)
 
