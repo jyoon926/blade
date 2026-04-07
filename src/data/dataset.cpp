@@ -28,9 +28,29 @@ size_t DataLoader::num_batches() const {
 }
 
 Sample DataLoader::collate(const std::vector<Sample>& samples) const {
-    // TODO: stack inputs and labels along dim 0
-    (void)samples;
-    return {Tensor({1}), Tensor({1})};
+    if (samples.empty())
+        throw std::runtime_error("collate: empty batch");
+    const size_t n = samples.size();
+    const auto& sample_shape = samples[0].first.shape();
+    const size_t sample_numel = samples[0].first.numel();
+
+    // Batch input shape: (n, *sample_shape)
+    std::vector<size_t> batch_shape = {n};
+    batch_shape.insert(batch_shape.end(), sample_shape.begin(), sample_shape.end());
+    Tensor inputs(batch_shape);
+    float* pi = inputs.data_ptr();
+    for (size_t i = 0; i < n; ++i) {
+        const float* ps = samples[i].first.data_ptr();
+        std::copy(ps, ps + sample_numel, pi + i * sample_numel);
+    }
+
+    // Labels: (n,) — each label tensor holds one value
+    Tensor labels({n});
+    float* pl = labels.data_ptr();
+    for (size_t i = 0; i < n; ++i)
+        pl[i] = samples[i].second.data_ptr()[0];
+
+    return {inputs, labels};
 }
 
 DataLoader::Iterator::Iterator(DataLoader* dl, size_t pos)
