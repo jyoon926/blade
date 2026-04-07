@@ -837,14 +837,49 @@ Tensor log_softmax(const Tensor& a, int dim) {
 
 // ---- neural network ops -----------------------------------------------------
 
+// Bias-add: out[i,j] = mat[i,j] + bias[j]  with autograd
+// mat: (N, out_features)  bias: (out_features,)
+static Tensor bias_add(const Tensor& mat, const Tensor& bias) {
+    if (mat.ndim() != 2 || bias.ndim() != 1 || mat.shape()[1] != bias.shape()[0])
+        throw std::runtime_error("bias_add: shape mismatch");
+    const size_t N   = mat.shape()[0];
+    const size_t out = mat.shape()[1];
+    Tensor result(mat.shape());
+    const float* pm = mat.data_ptr();
+    const float* pb = bias.data_ptr();
+    float* pr = result.data_ptr();
+    #pragma omp parallel for num_threads(NUM_THREADS) schedule(static)
+    for (size_t i = 0; i < N; ++i)
+        for (size_t j = 0; j < out; ++j)
+            pr[i * out + j] = pm[i * out + j] + pb[j];
+
+    if (any_requires_grad({&mat, &bias})) {
+        result.set_requires_grad(true);
+        auto sm = share(mat), sb = share(bias);
+        auto fn = [sm, sb, N, out](const Tensor& g) -> std::vector<Tensor> {
+            Tensor gm = Tensor(g.shape());
+            const float* pg = g.data_ptr();
+            float* pgm = gm.data_ptr();
+            for (size_t i = 0; i < N * out; ++i) pgm[i] = pg[i];
+            Tensor gb = Tensor::zeros({out});
+            float* pgb = gb.data_ptr();
+            for (size_t i = 0; i < N; ++i)
+                for (size_t j = 0; j < out; ++j)
+                    pgb[j] += pg[i * out + j];
+            return {gm, gb};
+        };
+        result.set_grad_fn(std::make_shared<Node>("BiasAddBackward", fn,
+            std::vector<std::shared_ptr<Tensor>>{sm, sb}));
+    }
+    return result;
+}
+
 Tensor linear(const Tensor& input, const Tensor& weight, const Tensor& bias) {
     // input: (N, in)  weight: (out, in)  bias: (out,)  -> (N, out)
-    // out = input @ weight^T + bias
-    Tensor wt = transpose(weight, 0, 1);
+    Tensor wt  = transpose(weight, 0, 1);
     Tensor out = matmul(input, wt);
-    // broadcast-add bias
-    // TODO: implement properly with broadcasting
-    (void)bias;
+    if (!bias.shape().empty())
+        return bias_add(out, bias);
     return out;
 }
 
