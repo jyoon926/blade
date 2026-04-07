@@ -33,6 +33,7 @@ Tensor mean(const Tensor& a);
 Tensor mean(const Tensor& a, int dim, bool keepdim = false);
 Tensor max(const Tensor& a);
 Tensor max(const Tensor& a, int dim, bool keepdim = false);
+Tensor argmax(const Tensor& a, int dim);  // returns indices (no grad)
 
 // ---- Linear algebra ---------------------------------------------------------
 // (M x K) @ (K x N) or batched (B x M x K) @ (B x K x N)
