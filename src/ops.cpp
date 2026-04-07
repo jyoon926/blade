@@ -509,6 +509,36 @@ Tensor max(const Tensor& a, int dim, bool keepdim) {
     return out;
 }
 
+Tensor argmax(const Tensor& a, int dim) {
+    // Returns float tensor of argmax indices along dim; no gradient.
+    int ndim = (int)a.ndim();
+    if (dim < 0) dim += ndim;
+    const size_t reduce_size = a.shape()[dim];
+    size_t outer = 1, inner = 1;
+    for (int i = 0; i < dim; ++i)        outer *= a.shape()[i];
+    for (int i = dim + 1; i < ndim; ++i) inner *= a.shape()[i];
+
+    std::vector<size_t> out_shape;
+    for (int i = 0; i < ndim; ++i)
+        if (i != dim) out_shape.push_back(a.shape()[i]);
+
+    Tensor out = Tensor::zeros(out_shape);
+    const float* pa = a.data_ptr();
+    float* po = out.data_ptr();
+    for (size_t oi = 0; oi < outer; ++oi) {
+        for (size_t ii = 0; ii < inner; ++ii) {
+            const size_t in_base = oi * reduce_size * inner + ii;
+            float best = pa[in_base]; size_t best_k = 0;
+            for (size_t k = 1; k < reduce_size; ++k) {
+                float v = pa[in_base + k * inner];
+                if (v > best) { best = v; best_k = k; }
+            }
+            po[oi * inner + ii] = (float)best_k;
+        }
+    }
+    return out;
+}
+
 // ---- matmul -----------------------------------------------------------------
 
 // (M x K) @ (K x N) -> (M x N)   or   (B x M x K) @ (B x K x N) -> (B x M x N)
