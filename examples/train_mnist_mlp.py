@@ -27,10 +27,6 @@ class MLP(nn.Module):
         self.fc2 = nn.Linear(256, 128)
         self.fc3 = nn.Linear(128, 10)
         self.relu = nn.ReLU()
-        # Register submodules so parameters() recurses into them
-        self.register_module("fc1", self.fc1)
-        self.register_module("fc2", self.fc2)
-        self.register_module("fc3", self.fc3)
 
     def forward(self, x):
         x = self.flatten(x)
@@ -42,13 +38,8 @@ class MLP(nn.Module):
 # ---- Helpers ----------------------------------------------------------------
 
 def count_correct(logits, labels):
-    """Count correctly predicted samples in a batch."""
     preds = blade.ops.argmax(logits, 1)
-    n = len(labels.storage())
-    return sum(
-        int(preds.storage()[i]) == int(labels.storage()[i])
-        for i in range(n)
-    )
+    return sum(int(p) == int(l) for p, l in zip(preds.storage(), labels.storage()))
 
 
 # ---- Training ---------------------------------------------------------------

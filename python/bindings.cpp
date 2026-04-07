@@ -164,6 +164,16 @@ PYBIND11_MODULE(blade, m) {
         .def("register_parameter", [](nn::Module& self, const std::string& name,
                                       Tensor& param) {
             self.register_parameter(name, param);
+        })
+        // Auto-register child Modules when assigned as attributes.
+        // Falls through to PyObject_GenericSetAttr to avoid infinite recursion.
+        .def("__setattr__", [](py::object self, const std::string& name, py::object value) {
+            if (py::isinstance<nn::Module>(value)) {
+                self.cast<nn::Module*>()->register_module(
+                    name, value.cast<std::shared_ptr<nn::Module>>());
+            }
+            if (PyObject_GenericSetAttr(self.ptr(), py::str(name).ptr(), value.ptr()) < 0)
+                throw py::error_already_set();
         });
 
     py::class_<nn::Linear, nn::Module, std::shared_ptr<nn::Linear>>(nn, "Linear")
