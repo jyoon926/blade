@@ -24,6 +24,12 @@ public:
     static Tensor arange(float start, float stop, float step = 1.f);
     static Tensor from_data(std::vector<size_t> shape, std::vector<float> data);
 
+    // Internal: create a view sharing existing storage (no data copy).
+    // Used by reshape/flatten to avoid unnecessary allocations.
+    static Tensor _make_view(std::shared_ptr<std::vector<float>> storage,
+                             std::vector<size_t> shape,
+                             bool requires_grad = false);
+
     // Shape accessors
     const std::vector<size_t>& shape() const { return shape_; }
     const std::vector<size_t>& strides() const { return strides_; }
@@ -32,10 +38,12 @@ public:
     size_t size(int dim) const;
 
     // Data accessors
-    float* data_ptr() { return data_.data(); }
-    const float* data_ptr() const { return data_.data(); }
-    std::vector<float>& storage() { return data_; }
-    const std::vector<float>& storage() const { return data_; }
+    float* data_ptr() { return data_->data(); }
+    const float* data_ptr() const { return data_->data(); }
+    std::vector<float>& storage() { return *data_; }
+    const std::vector<float>& storage() const { return *data_; }
+    // Returns the underlying shared storage (used by _make_view and share()).
+    std::shared_ptr<std::vector<float>> shared_data() const { return data_; }
     float item() const;
     float at(std::vector<size_t> idx) const;
     void set(std::vector<size_t> idx, float value);
@@ -85,7 +93,9 @@ public:
     void print() const;
 
 private:
-    std::vector<float> data_;
+    // Shared storage: copies of a Tensor (e.g. via share()) share the same
+    // underlying buffer, so saving tensors for backward no longer copies data.
+    std::shared_ptr<std::vector<float>> data_;
     std::vector<size_t> shape_;
     std::vector<size_t> strides_;   // row-major strides in elements
     bool requires_grad_ = false;
@@ -95,7 +105,6 @@ private:
 
     void compute_strides();
     size_t flat_index(const std::vector<size_t>& idx) const;
-    std::vector<size_t> normalise_shape(std::vector<size_t> shape) const;
 };
 
 // Scalar-on-left overloads

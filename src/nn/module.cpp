@@ -1,6 +1,7 @@
 #include "blade/nn/module.h"
 #include <fstream>
 #include <stdexcept>
+#include <unordered_map>
 
 namespace blade {
 namespace nn {
@@ -63,14 +64,74 @@ void Module::zero_grad() {
     for (auto* p : parameters()) p->zero_grad();
 }
 
+// ---- Serialisation ----------------------------------------------------------
+// Binary format (little-endian native floats):
+//   [n_params: size_t]
+//   for each param:
+//     [name_len: size_t] [name: char * name_len]
+//     [ndim: size_t]     [shape: size_t * ndim]
+//     [data: float * numel]
+
 void Module::save(const std::string& path) const {
-    // TODO: binary serialisation of all named parameters
-    (void)path;
+    std::ofstream f(path, std::ios::binary);
+    if (!f) throw std::runtime_error("Module::save: cannot open '" + path + "'");
+
+    auto params = const_cast<Module*>(this)->named_parameters();
+    size_t n = params.size();
+    f.write(reinterpret_cast<const char*>(&n), sizeof(n));
+
+    for (auto& [name, p] : params) {
+        size_t name_len = name.size();
+        f.write(reinterpret_cast<const char*>(&name_len), sizeof(name_len));
+        f.write(name.data(), (std::streamsize)name_len);
+
+        const auto& shape = p->shape();
+        size_t ndim = shape.size();
+        f.write(reinterpret_cast<const char*>(&ndim), sizeof(ndim));
+        f.write(reinterpret_cast<const char*>(shape.data()), (std::streamsize)(ndim * sizeof(size_t)));
+
+        size_t numel = p->numel();
+        f.write(reinterpret_cast<const char*>(p->data_ptr()), (std::streamsize)(numel * sizeof(float)));
+    }
 }
 
 void Module::load(const std::string& path) {
-    // TODO: load and restore named parameters
-    (void)path;
+    std::ifstream f(path, std::ios::binary);
+    if (!f) throw std::runtime_error("Module::load: cannot open '" + path + "'");
+
+    // Build name → Tensor* map for O(1) lookup.
+    std::unordered_map<std::string, Tensor*> param_map;
+    for (auto& [name, p] : named_parameters())
+        param_map[name] = p;
+
+    size_t n;
+    f.read(reinterpret_cast<char*>(&n), sizeof(n));
+
+    for (size_t i = 0; i < n; ++i) {
+        size_t name_len;
+        f.read(reinterpret_cast<char*>(&name_len), sizeof(name_len));
+        std::string name(name_len, '\0');
+        f.read(name.data(), (std::streamsize)name_len);
+
+        size_t ndim;
+        f.read(reinterpret_cast<char*>(&ndim), sizeof(ndim));
+        std::vector<size_t> shape(ndim);
+        f.read(reinterpret_cast<char*>(shape.data()), (std::streamsize)(ndim * sizeof(size_t)));
+
+        size_t numel = 1;
+        for (auto d : shape) numel *= d;
+
+        auto it = param_map.find(name);
+        if (it == param_map.end()) {
+            // Unknown parameter — skip its data.
+            f.seekg((std::streamoff)(numel * sizeof(float)), std::ios::cur);
+            continue;
+        }
+        if (it->second->numel() != numel)
+            throw std::runtime_error("Module::load: shape mismatch for '" + name + "'");
+        f.read(reinterpret_cast<char*>(it->second->data_ptr()),
+               (std::streamsize)(numel * sizeof(float)));
+    }
 }
 
 } // namespace nn

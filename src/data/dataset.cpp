@@ -8,11 +8,10 @@ namespace blade {
 namespace data {
 
 DataLoader::DataLoader(std::shared_ptr<Dataset> dataset,
-                       size_t batch_size, bool shuffle, size_t num_workers)
+                       size_t batch_size, bool shuffle)
     : dataset_(std::move(dataset)),
       batch_size_(batch_size),
-      shuffle_(shuffle),
-      num_workers_(num_workers) {
+      shuffle_(shuffle) {
     indices_.resize(dataset_->size());
     std::iota(indices_.begin(), indices_.end(), 0);
     if (shuffle_) reshuffle();

@@ -46,17 +46,20 @@ size_t Tensor::flat_index(const std::vector<size_t>& idx) const {
 
 // ---- constructors -----------------------------------------------------------
 
-Tensor::Tensor() {}
+Tensor::Tensor()
+    : data_(std::make_shared<std::vector<float>>()) {}
 
 Tensor::Tensor(std::vector<size_t> shape, bool requires_grad)
-    : shape_(std::move(shape)), requires_grad_(requires_grad) {
+    : data_(std::make_shared<std::vector<float>>()),
+      shape_(std::move(shape)), requires_grad_(requires_grad) {
     compute_strides();
-    data_.assign(numel(), 0.f);
+    data_->assign(numel(), 0.f);
 }
 
 Tensor::Tensor(std::vector<size_t> shape, std::vector<float> data, bool requires_grad)
-    : shape_(std::move(shape)), data_(std::move(data)), requires_grad_(requires_grad) {
-    if (data_.size() != shape_numel(shape_))
+    : data_(std::make_shared<std::vector<float>>(std::move(data))),
+      shape_(std::move(shape)), requires_grad_(requires_grad) {
+    if (data_->size() != shape_numel(shape_))
         throw std::runtime_error("Tensor: data/shape size mismatch");
     compute_strides();
 }
@@ -69,22 +72,21 @@ Tensor Tensor::zeros(std::vector<size_t> shape) {
 
 Tensor Tensor::ones(std::vector<size_t> shape) {
     Tensor t(shape);
-    std::fill(t.data_.begin(), t.data_.end(), 1.f);
+    std::fill(t.data_->begin(), t.data_->end(), 1.f);
     return t;
 }
 
 Tensor Tensor::full(std::vector<size_t> shape, float value) {
     Tensor t(shape);
-    std::fill(t.data_.begin(), t.data_.end(), value);
+    std::fill(t.data_->begin(), t.data_->end(), value);
     return t;
 }
 
 Tensor Tensor::randn(std::vector<size_t> shape, float mean, float std) {
-    // TODO: seed management / thread-local RNG
     Tensor t(shape);
     std::mt19937 rng(std::random_device{}());
     std::normal_distribution<float> dist(mean, std);
-    for (auto& v : t.data_) v = dist(rng);
+    for (auto& v : *t.data_) v = dist(rng);
     return t;
 }
 
@@ -92,19 +94,30 @@ Tensor Tensor::uniform(std::vector<size_t> shape, float low, float high) {
     Tensor t(shape);
     std::mt19937 rng(std::random_device{}());
     std::uniform_real_distribution<float> dist(low, high);
-    for (auto& v : t.data_) v = dist(rng);
+    for (auto& v : *t.data_) v = dist(rng);
     return t;
 }
 
 Tensor Tensor::arange(float start, float stop, float step) {
     size_t n = (size_t)std::ceil((stop - start) / step);
     Tensor t({n});
-    for (size_t i = 0; i < n; ++i) t.data_[i] = start + i * step;
+    for (size_t i = 0; i < n; ++i) t.data_ptr()[i] = start + i * step;
     return t;
 }
 
 Tensor Tensor::from_data(std::vector<size_t> shape, std::vector<float> data) {
     return Tensor(std::move(shape), std::move(data));
+}
+
+Tensor Tensor::_make_view(std::shared_ptr<std::vector<float>> storage,
+                          std::vector<size_t> shape,
+                          bool requires_grad) {
+    Tensor t;
+    t.data_         = std::move(storage);
+    t.shape_        = std::move(shape);
+    t.requires_grad_ = requires_grad;
+    t.compute_strides();
+    return t;
 }
 
 // ---- accessors --------------------------------------------------------------
@@ -119,15 +132,15 @@ size_t Tensor::size(int dim) const {
 float Tensor::item() const {
     if (numel() != 1)
         throw std::runtime_error("item() called on non-scalar tensor");
-    return data_[0];
+    return (*data_)[0];
 }
 
 float Tensor::at(std::vector<size_t> idx) const {
-    return data_[flat_index(idx)];
+    return (*data_)[flat_index(idx)];
 }
 
 void Tensor::set(std::vector<size_t> idx, float value) {
-    data_[flat_index(idx)] = value;
+    (*data_)[flat_index(idx)] = value;
 }
 
 // ---- autograd ---------------------------------------------------------------
@@ -150,15 +163,17 @@ const Tensor& Tensor::grad() const {
 }
 
 void Tensor::zero_grad() {
-    if (grad_) std::fill(grad_->data_.begin(), grad_->data_.end(), 0.f);
+    if (grad_) std::fill(grad_->data_->begin(), grad_->data_->end(), 0.f);
 }
 
 void Tensor::accumulate_grad(const Tensor& g) {
     if (!grad_) grad_ = std::make_shared<Tensor>(shape_);
     const size_t n = numel();
+    float*       dst = grad_->data_ptr();
+    const float* src = g.data_ptr();
     #pragma omp parallel for num_threads(NUM_THREADS) schedule(static)
     for (size_t i = 0; i < n; ++i)
-        grad_->data_[i] += g.data_[i];
+        dst[i] += src[i];
 }
 
 void Tensor::set_grad_fn(std::shared_ptr<Node> fn) {
@@ -172,17 +187,9 @@ void Tensor::backward(const Tensor& grad_output) {
 
 // ---- shape operations -------------------------------------------------------
 
-bool Tensor::is_contiguous() const {
-    // TODO: implement for non-contiguous tensors (after transpose etc.)
-    return true;
-}
+bool Tensor::is_contiguous() const { return true; }
 
-Tensor Tensor::contiguous() const {
-    if (is_contiguous()) return *this;
-    Tensor out(shape_);
-    // TODO: copy with stride-aware indexing
-    return out;
-}
+Tensor Tensor::contiguous() const { return *this; }
 
 Tensor Tensor::reshape(std::vector<size_t> new_shape) const {
     return ops::reshape(*this, std::move(new_shape));
@@ -217,17 +224,21 @@ Tensor Tensor::operator*(float s) const       { return ops::mul(*this, s); }
 Tensor Tensor::operator/(float s) const       { return ops::div(*this, s); }
 
 Tensor& Tensor::operator+=(const Tensor& other) {
-    // in-place; breaks the graph – only safe for leaf parameter updates
-    const size_t n = numel();
+    // In-place; breaks the graph — only safe for leaf parameter updates.
+    const size_t n  = numel();
+    float*       d  = data_ptr();
+    const float* od = other.data_ptr();
     #pragma omp parallel for num_threads(NUM_THREADS) schedule(static)
-    for (size_t i = 0; i < n; ++i) data_[i] += other.data_[i];
+    for (size_t i = 0; i < n; ++i) d[i] += od[i];
     return *this;
 }
 
 Tensor& Tensor::operator-=(const Tensor& other) {
-    const size_t n = numel();
+    const size_t n  = numel();
+    float*       d  = data_ptr();
+    const float* od = other.data_ptr();
     #pragma omp parallel for num_threads(NUM_THREADS) schedule(static)
-    for (size_t i = 0; i < n; ++i) data_[i] -= other.data_[i];
+    for (size_t i = 0; i < n; ++i) d[i] -= od[i];
     return *this;
 }
 

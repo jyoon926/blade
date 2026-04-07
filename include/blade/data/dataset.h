@@ -23,8 +23,7 @@ class DataLoader {
 public:
     DataLoader(std::shared_ptr<Dataset> dataset,
                size_t batch_size,
-               bool shuffle = true,
-               size_t num_workers = 0);
+               bool shuffle = true);
 
     struct Iterator {
         Iterator(DataLoader* dl, size_t pos);
@@ -45,7 +44,6 @@ private:
     std::shared_ptr<Dataset> dataset_;
     size_t batch_size_;
     bool shuffle_;
-    size_t num_workers_;
     std::vector<size_t> indices_;  // (possibly shuffled) sample order
 
     void reshuffle();

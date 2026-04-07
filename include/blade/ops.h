@@ -48,24 +48,6 @@ Tensor softmax(const Tensor& a, int dim);
 Tensor log_softmax(const Tensor& a, int dim);
 
 // ---- Neural network ops -----------------------------------------------------
-// input: (N, C_in, H, W)   weight: (C_out, C_in, kH, kW)   bias: (C_out,)
-Tensor conv2d(const Tensor& input, const Tensor& weight, const Tensor& bias,
-              int stride = 1, int padding = 0);
-
-Tensor max_pool2d(const Tensor& input, int kernel_size,
-                  int stride = -1, int padding = 0);
-
-Tensor avg_pool2d(const Tensor& input, int kernel_size,
-                  int stride = -1, int padding = 0);
-
-// weight: (C,)  bias: (C,)  running stats are updated in-place (no grad)
-Tensor batch_norm(const Tensor& input,
-                  const Tensor& weight, const Tensor& bias,
-                  Tensor& running_mean, Tensor& running_var,
-                  bool training = true, float momentum = 0.1f, float eps = 1e-5f);
-
-Tensor dropout(const Tensor& input, float p, bool training);
-
 // input: (N, in_features)  weight: (out, in)  bias: (out,)
 Tensor linear(const Tensor& input, const Tensor& weight, const Tensor& bias);
 
@@ -75,7 +57,6 @@ Tensor transpose(const Tensor& a, int dim0, int dim1);
 Tensor squeeze(const Tensor& a, int dim = -1);
 Tensor unsqueeze(const Tensor& a, int dim);
 Tensor flatten(const Tensor& a, int start_dim = 0, int end_dim = -1);
-Tensor cat(const std::vector<Tensor>& tensors, int dim = 0);
 
 } // namespace ops
 } // namespace blade

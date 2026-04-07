@@ -31,7 +31,6 @@ set(BLADE_SOURCES
     src/nn/module.cpp
     src/nn/layers.cpp
     src/nn/loss.cpp
-    src/nn/pooling.cpp
     # optim
     src/optim/sgd.cpp
     src/optim/adam.cpp

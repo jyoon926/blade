@@ -42,42 +42,5 @@ Tensor linear(const Tensor& input, const Tensor& weight, const Tensor& bias) {
     return bias.shape().empty() ? out : bias_add(out, bias);
 }
 
-// ---- stubs (not yet implemented) --------------------------------------------
-
-Tensor conv2d(const Tensor& input, const Tensor& weight, const Tensor& bias,
-              int stride, int padding) {
-    // TODO: im2col-based conv2d with backward
-    (void)input; (void)weight; (void)bias; (void)stride; (void)padding;
-    return Tensor({1});
-}
-
-Tensor max_pool2d(const Tensor& input, int kernel_size, int stride, int padding) {
-    // TODO: index-mask backward
-    (void)input; (void)kernel_size; (void)stride; (void)padding;
-    return Tensor({1});
-}
-
-Tensor avg_pool2d(const Tensor& input, int kernel_size, int stride, int padding) {
-    // TODO
-    (void)input; (void)kernel_size; (void)stride; (void)padding;
-    return Tensor({1});
-}
-
-Tensor batch_norm(const Tensor& input, const Tensor& weight, const Tensor& bias,
-                  Tensor& running_mean, Tensor& running_var,
-                  bool training, float momentum, float eps) {
-    // TODO: per-channel mean/var, normalise, scale+shift
-    (void)weight; (void)bias; (void)running_mean; (void)running_var;
-    (void)training; (void)momentum; (void)eps;
-    return Tensor(input.shape());
-}
-
-Tensor dropout(const Tensor& input, float p, bool training) {
-    // TODO: Bernoulli mask, scale by 1/(1-p)
-    if (!training || p == 0.f) return input;
-    (void)p;
-    return Tensor(input.shape());
-}
-
 } // namespace ops
 } // namespace blade

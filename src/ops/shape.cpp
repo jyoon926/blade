@@ -4,18 +4,20 @@
 namespace blade {
 namespace ops {
 
+// reshape is zero-copy: the output shares the input's storage buffer.
+// Only shape metadata differs; a backward view-reshape undoes it.
 Tensor reshape(const Tensor& a, std::vector<size_t> new_shape) {
     size_t new_n = 1;
     for (auto d : new_shape) new_n *= d;
     if (new_n != a.numel()) throw std::runtime_error("reshape: size mismatch");
-    Tensor out = Tensor::from_data(new_shape,
-        std::vector<float>(a.data_ptr(), a.data_ptr() + a.numel()));
+    Tensor out = Tensor::_make_view(a.shared_data(), new_shape);
     if (a.requires_grad()) {
         out.set_requires_grad(true);
         auto sa = share(a);
         out.set_grad_fn(std::make_shared<Node>("ReshapeBackward",
-            [sa](const Tensor& g) -> std::vector<Tensor> { return {reshape(g, sa->shape())}; },
-            std::vector<std::shared_ptr<Tensor>>{sa}));
+            [sa](const Tensor& g) -> std::vector<Tensor> {
+                return {reshape(g, sa->shape())};
+            }, std::vector<std::shared_ptr<Tensor>>{sa}));
     }
     return out;
 }
@@ -36,7 +38,6 @@ Tensor transpose(const Tensor& a, int dim0, int dim1) {
             for (size_t j = 0; j < C; ++j)
                 out.data_ptr()[j * R + i] = a.data_ptr()[i * C + j];
     }
-    // TODO: general N-D transpose
     if (a.requires_grad()) {
         out.set_requires_grad(true);
         auto sa = share(a);
@@ -53,8 +54,7 @@ Tensor squeeze(const Tensor& a, int dim) {
     for (int i = 0; i < (int)a.ndim(); ++i) {
         if (dim < 0 || i == dim) {
             if (a.shape()[i] != 1) new_shape.push_back(a.shape()[i]);
-        }
-        else {
+        } else {
             new_shape.push_back(a.shape()[i]);
         }
     }
@@ -83,12 +83,6 @@ Tensor flatten(const Tensor& a, int start_dim, int end_dim) {
         }
     }
     return reshape(a, new_shape);
-}
-
-Tensor cat(const std::vector<Tensor>& tensors, int dim) {
-    // TODO: concatenate along dim with backward
-    (void)tensors; (void)dim;
-    return Tensor({1});
 }
 
 } // namespace ops

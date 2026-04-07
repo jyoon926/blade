@@ -8,7 +8,6 @@
 #include "blade/nn/layers.h"
 #include "blade/nn/activations.h"
 #include "blade/nn/loss.h"
-#include "blade/nn/pooling.h"
 #include "blade/optim/optimizer.h"
 #include "blade/optim/sgd.h"
 #include "blade/optim/adam.h"
@@ -75,10 +74,10 @@ PYBIND11_MODULE(blade, m) {
             })
 
         // Data access
-        .def("item",     &Tensor::item)
-        .def("storage",  [](const Tensor& t) { return t.storage(); })
-        .def("at",       &Tensor::at)
-        .def("set",      &Tensor::set)
+        .def("item",    &Tensor::item)
+        .def("storage", [](const Tensor& t) { return t.storage(); })
+        .def("at",      &Tensor::at)
+        .def("set",     &Tensor::set)
 
         // Autograd
         .def("backward", [](Tensor& t, py::object grad) {
@@ -97,79 +96,74 @@ PYBIND11_MODULE(blade, m) {
         .def("unsqueeze", &Tensor::unsqueeze)
 
         // Operators
-        .def("__add__",  [](const Tensor& a, const Tensor& b) { return a + b; })
-        .def("__sub__",  [](const Tensor& a, const Tensor& b) { return a - b; })
-        .def("__mul__",  [](const Tensor& a, const Tensor& b) { return a * b; })
+        .def("__add__",     [](const Tensor& a, const Tensor& b) { return a + b; })
+        .def("__sub__",     [](const Tensor& a, const Tensor& b) { return a - b; })
+        .def("__mul__",     [](const Tensor& a, const Tensor& b) { return a * b; })
         .def("__truediv__", [](const Tensor& a, const Tensor& b) { return a / b; })
-        .def("__neg__",  [](const Tensor& a) { return -a; })
-        .def("__add__",  [](const Tensor& a, float s) { return a + s; })
-        .def("__radd__", [](const Tensor& a, float s) { return a + s; })
-        .def("__mul__",  [](const Tensor& a, float s) { return a * s; })
-        .def("__rmul__", [](const Tensor& a, float s) { return a * s; })
+        .def("__neg__",     [](const Tensor& a) { return -a; })
+        .def("__add__",     [](const Tensor& a, float s) { return a + s; })
+        .def("__radd__",    [](const Tensor& a, float s) { return a + s; })
+        .def("__mul__",     [](const Tensor& a, float s) { return a * s; })
+        .def("__rmul__",    [](const Tensor& a, float s) { return a * s; })
 
         .def("__repr__", &Tensor::repr)
         .def("print",    &Tensor::print);
 
     // ---- ops ----------------------------------------------------------------
     py::module_ ops = m.def_submodule("ops");
-    ops.def("add",        py::overload_cast<const Tensor&, const Tensor&>(&ops::add));
-    ops.def("sub",        py::overload_cast<const Tensor&, const Tensor&>(&ops::sub));
-    ops.def("mul",        py::overload_cast<const Tensor&, const Tensor&>(&ops::mul));
-    ops.def("div",        py::overload_cast<const Tensor&, const Tensor&>(&ops::div));
-    ops.def("neg",        &ops::neg);
-    ops.def("abs",        &ops::abs);
-    ops.def("clamp",      &ops::clamp);
-    ops.def("leaky_relu", &ops::leaky_relu,
+    ops.def("add",         py::overload_cast<const Tensor&, const Tensor&>(&ops::add));
+    ops.def("sub",         py::overload_cast<const Tensor&, const Tensor&>(&ops::sub));
+    ops.def("mul",         py::overload_cast<const Tensor&, const Tensor&>(&ops::mul));
+    ops.def("div",         py::overload_cast<const Tensor&, const Tensor&>(&ops::div));
+    ops.def("neg",         &ops::neg);
+    ops.def("abs",         &ops::abs);
+    ops.def("clamp",       &ops::clamp);
+    ops.def("pow",         &ops::pow);
+    ops.def("sqrt",        &ops::sqrt);
+    ops.def("exp",         &ops::exp);
+    ops.def("log",         &ops::log);
+    ops.def("relu",        &ops::relu);
+    ops.def("leaky_relu",  &ops::leaky_relu,
             py::arg("a"), py::arg("neg_slope") = 0.01f);
-    ops.def("pow",        &ops::pow);
-    ops.def("sqrt",       &ops::sqrt);
-    ops.def("exp",        &ops::exp);
-    ops.def("log",        &ops::log);
-    ops.def("relu",       &ops::relu);
-    ops.def("sigmoid",    &ops::sigmoid);
-    ops.def("tanh",       &ops::tanh);
-    ops.def("softmax",    &ops::softmax);
-    ops.def("log_softmax",&ops::log_softmax);
-    ops.def("matmul",     &ops::matmul);
-    ops.def("sum",        py::overload_cast<const Tensor&>(&ops::sum));
-    ops.def("sum",        py::overload_cast<const Tensor&, int, bool>(&ops::sum),
+    ops.def("sigmoid",     &ops::sigmoid);
+    ops.def("tanh",        &ops::tanh);
+    ops.def("softmax",     &ops::softmax);
+    ops.def("log_softmax", &ops::log_softmax);
+    ops.def("matmul",      &ops::matmul);
+    ops.def("linear",      &ops::linear);
+    ops.def("sum",         py::overload_cast<const Tensor&>(&ops::sum));
+    ops.def("sum",         py::overload_cast<const Tensor&, int, bool>(&ops::sum),
             py::arg("a"), py::arg("dim"), py::arg("keepdim") = false);
-    ops.def("mean",       py::overload_cast<const Tensor&>(&ops::mean));
-    ops.def("mean",       py::overload_cast<const Tensor&, int, bool>(&ops::mean),
+    ops.def("mean",        py::overload_cast<const Tensor&>(&ops::mean));
+    ops.def("mean",        py::overload_cast<const Tensor&, int, bool>(&ops::mean),
             py::arg("a"), py::arg("dim"), py::arg("keepdim") = false);
-    ops.def("max",        py::overload_cast<const Tensor&>(&ops::max));
-    ops.def("max",        py::overload_cast<const Tensor&, int, bool>(&ops::max),
+    ops.def("max",         py::overload_cast<const Tensor&>(&ops::max));
+    ops.def("max",         py::overload_cast<const Tensor&, int, bool>(&ops::max),
             py::arg("a"), py::arg("dim"), py::arg("keepdim") = false);
-    ops.def("argmax",     &ops::argmax, py::arg("a"), py::arg("dim"));
-    ops.def("reshape",    &ops::reshape);
-    ops.def("transpose",  &ops::transpose);
-    ops.def("flatten",    &ops::flatten,
+    ops.def("argmax",      &ops::argmax, py::arg("a"), py::arg("dim"));
+    ops.def("reshape",     &ops::reshape);
+    ops.def("transpose",   &ops::transpose);
+    ops.def("flatten",     &ops::flatten,
             py::arg("a"), py::arg("start_dim") = 0, py::arg("end_dim") = -1);
-    ops.def("conv2d",     &ops::conv2d,
-            py::arg("input"), py::arg("weight"), py::arg("bias"),
-            py::arg("stride") = 1, py::arg("padding") = 0);
-    ops.def("max_pool2d", &ops::max_pool2d,
-            py::arg("input"), py::arg("kernel_size"),
-            py::arg("stride") = -1, py::arg("padding") = 0);
-    ops.def("dropout",    &ops::dropout);
-    ops.def("linear",     &ops::linear);
 
     // ---- nn -----------------------------------------------------------------
     py::module_ nn = m.def_submodule("nn");
 
     py::class_<nn::Module, PyModule, std::shared_ptr<nn::Module>>(nn, "Module")
         .def(py::init<>())
-        .def("forward",           &nn::Module::forward)
-        .def("__call__",          &nn::Module::operator())
-        .def("parameters",        &nn::Module::parameters,
+        .def("forward",            &nn::Module::forward)
+        .def("__call__",           &nn::Module::operator())
+        .def("parameters",         &nn::Module::parameters,
              py::return_value_policy::reference_internal)
-        .def("train",             &nn::Module::train, py::arg("mode") = true)
-        .def("eval",              &nn::Module::eval)
-        .def("zero_grad",         &nn::Module::zero_grad)
-        .def("save",              &nn::Module::save)
-        .def("load",              &nn::Module::load)
-        .def("register_module",   [](nn::Module& self, const std::string& name,
-                                     std::shared_ptr<nn::Module> mod) {
+        .def("named_parameters",   &nn::Module::named_parameters,
+             py::return_value_policy::reference_internal)
+        .def("train",              &nn::Module::train, py::arg("mode") = true)
+        .def("eval",               &nn::Module::eval)
+        .def("zero_grad",          &nn::Module::zero_grad)
+        .def("save",               &nn::Module::save)
+        .def("load",               &nn::Module::load)
+        .def("register_module",    [](nn::Module& self, const std::string& name,
+                                      std::shared_ptr<nn::Module> mod) {
             self.register_module(name, mod);
         })
         .def("register_parameter", [](nn::Module& self, const std::string& name,
@@ -177,7 +171,6 @@ PYBIND11_MODULE(blade, m) {
             self.register_parameter(name, param);
         })
         // Auto-register child Modules when assigned as attributes.
-        // Falls through to PyObject_GenericSetAttr to avoid infinite recursion.
         .def("__setattr__", [](py::object self, const std::string& name, py::object value) {
             if (py::isinstance<nn::Module>(value)) {
                 self.cast<nn::Module*>()->register_module(
@@ -194,27 +187,20 @@ PYBIND11_MODULE(blade, m) {
         .def_readwrite("weight", &nn::Linear::weight)
         .def_readwrite("bias",   &nn::Linear::bias);
 
-    py::class_<nn::Conv2d, nn::Module, std::shared_ptr<nn::Conv2d>>(nn, "Conv2d")
-        .def(py::init<size_t, size_t, size_t, size_t, size_t, bool>(),
-             py::arg("in_channels"), py::arg("out_channels"), py::arg("kernel_size"),
-             py::arg("stride") = 1, py::arg("padding") = 0, py::arg("bias") = true)
-        .def("forward", &nn::Conv2d::forward)
-        .def_readwrite("weight", &nn::Conv2d::weight)
-        .def_readwrite("bias",   &nn::Conv2d::bias);
-
-    py::class_<nn::BatchNorm2d, nn::Module, std::shared_ptr<nn::BatchNorm2d>>(nn, "BatchNorm2d")
-        .def(py::init<size_t, float, float>(),
-             py::arg("num_features"), py::arg("eps") = 1e-5f, py::arg("momentum") = 0.1f)
-        .def("forward", &nn::BatchNorm2d::forward);
-
-    py::class_<nn::Dropout, nn::Module, std::shared_ptr<nn::Dropout>>(nn, "Dropout")
-        .def(py::init<float>(), py::arg("p") = 0.5f)
-        .def("forward", &nn::Dropout::forward);
-
     py::class_<nn::Flatten, nn::Module, std::shared_ptr<nn::Flatten>>(nn, "Flatten")
         .def(py::init<int, int>(),
              py::arg("start_dim") = 1, py::arg("end_dim") = -1)
         .def("forward", &nn::Flatten::forward);
+
+    py::class_<nn::Sequential, nn::Module, std::shared_ptr<nn::Sequential>>(nn, "Sequential")
+        .def(py::init<>())
+        .def(py::init([](std::vector<std::shared_ptr<nn::Module>> mods) {
+            auto seq = std::make_shared<nn::Sequential>();
+            for (auto& m : mods) seq->add(m);
+            return seq;
+        }))
+        .def("add",     &nn::Sequential::add)
+        .def("forward", &nn::Sequential::forward);
 
     py::class_<nn::ReLU, nn::Module, std::shared_ptr<nn::ReLU>>(nn, "ReLU")
         .def(py::init<>()).def("forward", &nn::ReLU::forward);
@@ -225,16 +211,7 @@ PYBIND11_MODULE(blade, m) {
     py::class_<nn::Tanh, nn::Module, std::shared_ptr<nn::Tanh>>(nn, "Tanh")
         .def(py::init<>()).def("forward", &nn::Tanh::forward);
 
-    py::class_<nn::Softmax, nn::Module, std::shared_ptr<nn::Softmax>>(nn, "Softmax")
-        .def(py::init<int>(), py::arg("dim") = -1)
-        .def("forward", &nn::Softmax::forward);
-
-    py::class_<nn::MaxPool2d, nn::Module, std::shared_ptr<nn::MaxPool2d>>(nn, "MaxPool2d")
-        .def(py::init<size_t, size_t, size_t>(),
-             py::arg("kernel_size"), py::arg("stride") = 0, py::arg("padding") = 0)
-        .def("forward", &nn::MaxPool2d::forward);
-
-    // Loss functions (not Modules – they take two tensors)
+    // Loss functions
     nn.def("cross_entropy", &nn::cross_entropy);
     nn.def("mse_loss",      &nn::mse_loss);
     nn.def("nll_loss",      &nn::nll_loss);
@@ -280,9 +257,9 @@ PYBIND11_MODULE(blade, m) {
         .def("__getitem__", &data::Dataset::get);
 
     py::class_<data::DataLoader>(data, "DataLoader")
-        .def(py::init<std::shared_ptr<data::Dataset>, size_t, bool, size_t>(),
+        .def(py::init<std::shared_ptr<data::Dataset>, size_t, bool>(),
              py::arg("dataset"), py::arg("batch_size"),
-             py::arg("shuffle") = true, py::arg("num_workers") = 0,
+             py::arg("shuffle") = true,
              py::keep_alive<1, 2>())
         .def("__len__",  &data::DataLoader::num_batches)
         .def("__iter__", [](data::DataLoader& dl) {
