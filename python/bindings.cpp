@@ -27,6 +27,17 @@ public:
     }
 };
 
+class PyDataset : public data::Dataset {
+public:
+    using data::Dataset::Dataset;
+    size_t size() const override {
+        PYBIND11_OVERRIDE_PURE(size_t, data::Dataset, size);
+    }
+    data::Sample get(size_t idx) const override {
+        PYBIND11_OVERRIDE_PURE(data::Sample, data::Dataset, get, idx);
+    }
+};
+
 PYBIND11_MODULE(blade, m) {
     m.doc() = "BLADE: Backpropagation Library for Automatic Differentiation";
 
@@ -261,14 +272,18 @@ PYBIND11_MODULE(blade, m) {
     // ---- data ---------------------------------------------------------------
     py::module_ data = m.def_submodule("data");
 
-    py::class_<data::Dataset, std::shared_ptr<data::Dataset>>(data, "Dataset")
-        .def("__len__", &data::Dataset::size)
+    py::class_<data::Dataset, PyDataset, std::shared_ptr<data::Dataset>>(data, "Dataset")
+        .def(py::init<>())
+        .def("size",        &data::Dataset::size)
+        .def("get",         &data::Dataset::get)
+        .def("__len__",     &data::Dataset::size)
         .def("__getitem__", &data::Dataset::get);
 
     py::class_<data::DataLoader>(data, "DataLoader")
         .def(py::init<std::shared_ptr<data::Dataset>, size_t, bool, size_t>(),
              py::arg("dataset"), py::arg("batch_size"),
-             py::arg("shuffle") = true, py::arg("num_workers") = 0)
+             py::arg("shuffle") = true, py::arg("num_workers") = 0,
+             py::keep_alive<1, 2>())
         .def("__len__",  &data::DataLoader::num_batches)
         .def("__iter__", [](data::DataLoader& dl) {
             return py::make_iterator(dl.begin(), dl.end());

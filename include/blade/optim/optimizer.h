@@ -7,14 +7,13 @@ namespace optim {
 
 class Optimizer {
 public:
-    explicit Optimizer(std::vector<Tensor*> params);
+    explicit Optimizer(std::vector<Tensor*> params)
+        : params_(std::move(params)) {}
     virtual ~Optimizer() = default;
 
-    // Apply one gradient-descent step.
     virtual void step() = 0;
 
-    // Zero all parameter gradients.
-    void zero_grad();
+    void zero_grad() { for (auto* p : params_) p->zero_grad(); }
 
 protected:
     std::vector<Tensor*> params_;

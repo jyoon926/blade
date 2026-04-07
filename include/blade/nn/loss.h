@@ -15,9 +15,6 @@ Tensor nll_loss(const Tensor& input, const Tensor& target);
 // Mean-squared-error loss.
 Tensor mse_loss(const Tensor& input, const Tensor& target);
 
-// Binary cross-entropy (input must be probabilities in (0,1)).
-Tensor binary_cross_entropy(const Tensor& input, const Tensor& target);
-
 // Module wrappers for use in Sequential-style networks.
 
 class CrossEntropyLoss {

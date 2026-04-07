@@ -1,14 +1,7 @@
 #include "blade/nn/loss.h"
 #include "blade/ops.h"
-#include "blade/node.h"
+#include "internal.h"
 #include <stdexcept>
-#include <memory>
-
-namespace blade {
-static std::shared_ptr<Tensor> share(const Tensor& t) {
-    return std::make_shared<Tensor>(t);
-}
-} // namespace blade
 
 namespace blade {
 namespace nn {
@@ -41,7 +34,7 @@ Tensor nll_loss(const Tensor& input, const Tensor& target) {
 
     if (input.requires_grad()) {
         out.set_requires_grad(true);
-        auto si = blade::share(input);
+        auto si = share(input);
         auto fn = [si, sel, N](const Tensor& g) -> std::vector<Tensor> {
             Tensor gi = Tensor::zeros(si->shape());
             float* pgi = gi.data_ptr();
@@ -62,13 +55,6 @@ Tensor mse_loss(const Tensor& input, const Tensor& target) {
     Tensor diff = ops::sub(input, target);
     Tensor sq   = ops::mul(diff, diff);
     return ops::mean(sq);
-}
-
-Tensor binary_cross_entropy(const Tensor& input, const Tensor& target) {
-    // -[t * log(p) + (1-t) * log(1-p)]
-    // TODO: numerically stable version
-    (void)input; (void)target;
-    return Tensor({1});
 }
 
 // ---- Module wrappers --------------------------------------------------------
