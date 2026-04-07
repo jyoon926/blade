@@ -129,6 +129,7 @@ PYBIND11_MODULE(blade, m) {
     ops.def("max",        py::overload_cast<const Tensor&>(&ops::max));
     ops.def("max",        py::overload_cast<const Tensor&, int, bool>(&ops::max),
             py::arg("a"), py::arg("dim"), py::arg("keepdim") = false);
+    ops.def("argmax",     &ops::argmax, py::arg("a"), py::arg("dim"));
     ops.def("reshape",    &ops::reshape);
     ops.def("transpose",  &ops::transpose);
     ops.def("flatten",    &ops::flatten,
@@ -147,15 +148,23 @@ PYBIND11_MODULE(blade, m) {
 
     py::class_<nn::Module, PyModule, std::shared_ptr<nn::Module>>(nn, "Module")
         .def(py::init<>())
-        .def("forward",          &nn::Module::forward)
-        .def("__call__",         &nn::Module::operator())
-        .def("parameters",       &nn::Module::parameters,
+        .def("forward",           &nn::Module::forward)
+        .def("__call__",          &nn::Module::operator())
+        .def("parameters",        &nn::Module::parameters,
              py::return_value_policy::reference_internal)
-        .def("train",            &nn::Module::train, py::arg("mode") = true)
-        .def("eval",             &nn::Module::eval)
-        .def("zero_grad",        &nn::Module::zero_grad)
-        .def("save",             &nn::Module::save)
-        .def("load",             &nn::Module::load);
+        .def("train",             &nn::Module::train, py::arg("mode") = true)
+        .def("eval",              &nn::Module::eval)
+        .def("zero_grad",         &nn::Module::zero_grad)
+        .def("save",              &nn::Module::save)
+        .def("load",              &nn::Module::load)
+        .def("register_module",   [](nn::Module& self, const std::string& name,
+                                     std::shared_ptr<nn::Module> mod) {
+            self.register_module(name, mod);
+        })
+        .def("register_parameter", [](nn::Module& self, const std::string& name,
+                                      Tensor& param) {
+            self.register_parameter(name, param);
+        });
 
     py::class_<nn::Linear, nn::Module, std::shared_ptr<nn::Linear>>(nn, "Linear")
         .def(py::init<size_t, size_t, bool>(),

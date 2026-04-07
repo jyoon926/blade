@@ -39,10 +39,11 @@ public:
     std::string name() const { return name_; }
     void set_name(const std::string& n) { name_ = n; }
 
-protected:
-    // Call these from derived class constructors to register params & submodules.
+    // Register params and submodules (called from constructors or Python __init__).
     void register_parameter(const std::string& name, Tensor& param);
     void register_module(const std::string& name, std::shared_ptr<Module> mod);
+
+protected:
 
     bool training_ = true;
 
