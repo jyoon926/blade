@@ -10,7 +10,7 @@ Built for the course Machine Learning Systems Implementation (CSCI 637).
 - n-dimensional float32 tensors with OpenMP-parallelized ops
 - reverse-mode automatic differentiation (define-by-run)
 - neural network modules: Linear, Conv2d, BatchNorm2d, Dropout, pooling
-- optimizers: SGD (momentum, Nesterov) and Adam
+- optimizers: SGD and Adam
 - MNIST data loader
 
 ## Build
@@ -39,4 +39,4 @@ loss.backward()
 opt.step()
 ```
 
-See `examples/mnist_cnn.py` for a full CNN training example.
+See `examples/train_mnist_mlp.py` for a full MLP training example.
