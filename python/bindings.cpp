@@ -141,6 +141,7 @@ PYBIND11_MODULE(blade, m) {
     ops.def("max",         py::overload_cast<const Tensor&, int, bool>(&ops::max),
             py::arg("a"), py::arg("dim"), py::arg("keepdim") = false);
     ops.def("argmax",      &ops::argmax, py::arg("a"), py::arg("dim"));
+    ops.def("eq",           &ops::eq, py::arg("a"), py::arg("b"));
     ops.def("reshape",     &ops::reshape);
     ops.def("transpose",   &ops::transpose);
     ops.def("flatten",     &ops::flatten,

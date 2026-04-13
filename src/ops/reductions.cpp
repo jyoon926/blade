@@ -26,7 +26,7 @@ static void reduction_dims(const Tensor& a, int dim,
     if (out_shape.empty()) out_shape.push_back(1);
 }
 
-// ---- sum --------------------------------------------------------------------
+// sum
 
 Tensor sum(const Tensor& a) {
     Tensor out({1});
@@ -90,7 +90,7 @@ Tensor mean(const Tensor& a, int dim, bool kd) {
     return mul(sum(a, dim, kd), 1.f / (float)a.shape()[d]);
 }
 
-// ---- max --------------------------------------------------------------------
+// max
 
 Tensor max(const Tensor& a) {
     const size_t n = a.numel();
@@ -152,7 +152,7 @@ Tensor max(const Tensor& a, int dim, bool keepdim) {
     return out;
 }
 
-// ---- argmax (no grad) -------------------------------------------------------
+// no grad
 
 Tensor argmax(const Tensor& a, int dim) {
     int ndim = (int)a.ndim();
@@ -176,6 +176,25 @@ Tensor argmax(const Tensor& a, int dim) {
             }
             po[oi * inner + ii] = (float)best_k;
         }
+    return out;
+}
+
+Tensor eq(const Tensor& a, const Tensor& b) {
+    if (a.shape() != b.shape())
+        throw std::runtime_error("eq: shape mismatch");
+
+    Tensor out(a.shape());
+
+    const size_t n = a.numel();
+    const float* pa = a.data_ptr();
+    const float* pb = b.data_ptr();
+    float* po = out.data_ptr();
+
+    #pragma omp parallel for num_threads(NUM_THREADS) schedule(static)
+    for (size_t i = 0; i < n; ++i) {
+        po[i] = (pa[i] == pb[i]) ? 1.f : 0.f;
+    }
+
     return out;
 }
 
