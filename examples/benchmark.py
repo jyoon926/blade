@@ -47,7 +47,7 @@ def run_blade(mnist_root, epochs, batch_size, lr):
     train_ds = bdata.MNIST(mnist_root, bdata.MNISTSplit.Train)
     test_ds = bdata.MNIST(mnist_root, bdata.MNISTSplit.Test)
     train_loader = bdata.DataLoader(train_ds, batch_size=batch_size, shuffle=True)
-    test_loader = bdata.DataLoader(test_ds,  batch_size=256,        shuffle=False)
+    test_loader = bdata.DataLoader(test_ds, batch_size=256, shuffle=False)
 
     model = BladeMLP()
     optimizer = boptim.Adam(model.parameters(), lr=lr)
@@ -106,37 +106,38 @@ def run_blade(mnist_root, epochs, batch_size, lr):
 
 # PyTorch
 
-def run_torch(mnist_root, epochs, batch_size, lr):
+def run_torch(mnist_root, epochs, batch_size, lr, device="cpu"):
     import torch
     import torch.nn as nn
     import torch.optim as optim
     from torchvision import datasets, transforms
 
+    tag = f"torch-{device}"
+
     transform = transforms.Compose([
         transforms.ToTensor(),
         transforms.Normalize((0.0,), (1.0,)),  # already [0,1] like BLADE
     ])
-    train_ds = datasets.MNIST(mnist_root, train=True,  download=False,
-                                transform=transform)
-    test_ds  = datasets.MNIST(mnist_root, train=False, download=False,
-                               transform=transform)
+    train_ds = datasets.MNIST(mnist_root, train=True, download=False, transform=transform)
+    test_ds = datasets.MNIST(mnist_root, train=False, download=False, transform=transform)
     train_loader = torch.utils.data.DataLoader(train_ds, batch_size=batch_size, shuffle=True)
-    test_loader  = torch.utils.data.DataLoader(test_ds, batch_size=256, shuffle=False)
+    test_loader = torch.utils.data.DataLoader(test_ds, batch_size=256, shuffle=False)
 
     model = nn.Sequential(
         nn.Flatten(),
         nn.Linear(784, 256), nn.ReLU(),
         nn.Linear(256, 128), nn.ReLU(),
         nn.Linear(128, 10),
-    )
+    ).to(device)
     optimizer = optim.Adam(model.parameters(), lr=lr)
     criterion = nn.CrossEntropyLoss()
 
     epoch_results = []
-    
+
     # Warm-up (not timed)
     model.train()
     for inputs, labels in train_loader:
+        inputs, labels = inputs.to(device), labels.to(device)
         optimizer.zero_grad()
         logits = model(inputs)
         loss = criterion(logits, labels)
@@ -144,14 +145,20 @@ def run_torch(mnist_root, epochs, batch_size, lr):
         optimizer.step()
         break
 
+    # Synchronize GPU before starting the timer
+    if device != "cpu":
+        torch.cuda.synchronize(device)
     total_start = time.perf_counter()
 
     for epoch in range(1, epochs + 1):
         model.train()
         total_loss, n_batches = 0.0, 0
+        if device != "cpu":
+            torch.cuda.synchronize(device)
         epoch_start = time.perf_counter()
 
         for inputs, labels in train_loader:
+            inputs, labels = inputs.to(device), labels.to(device)
             optimizer.zero_grad()
             logits = model(inputs)
             loss = criterion(logits, labels)
@@ -164,10 +171,13 @@ def run_torch(mnist_root, epochs, batch_size, lr):
         correct, total = 0, 0
         with torch.no_grad():
             for inputs, labels in test_loader:
+                inputs, labels = inputs.to(device), labels.to(device)
                 preds = model(inputs).argmax(dim=1)
                 correct += (preds == labels).sum().item()
                 total += labels.size(0)
 
+        if device != "cpu":
+            torch.cuda.synchronize(device)
         epoch_time = time.perf_counter() - epoch_start
         epoch_results.append({
             "epoch": epoch,
@@ -175,11 +185,13 @@ def run_torch(mnist_root, epochs, batch_size, lr):
             "acc": correct / total,
             "time_s": epoch_time,
         })
-        print(f"  [torch] epoch {epoch}/{epochs}  "
+        print(f"  [{tag}] epoch {epoch}/{epochs}  "
               f"loss={total_loss/n_batches:.4f}  "
               f"acc={correct/total:.4f}  "
               f"({epoch_time:.1f}s)", flush=True)
 
+    if device != "cpu":
+        torch.cuda.synchronize(device)
     total_time = time.perf_counter() - total_start
     return epoch_results, total_time
 
@@ -201,10 +213,11 @@ def ensure_torchvision_data(mnist_root):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--mnist-root", default="data/mnist")
-    ap.add_argument("--epochs",     type=int,   default=5)
-    ap.add_argument("--batch-size", type=int,   default=64)
-    ap.add_argument("--lr",         type=float, default=1e-3)
-    ap.add_argument("--skip-torch", action="store_true")
+    ap.add_argument("--epochs", type=int, default=5)
+    ap.add_argument("--batch-size", type=int, default=64)
+    ap.add_argument("--lr", type=float, default=1e-3)
+    ap.add_argument("--skip-torch-cpu", action="store_true")
+    ap.add_argument("--skip-torch-gpu", action="store_true")
     args = ap.parse_args()
 
     print("=" * 60, flush=True)
@@ -212,44 +225,75 @@ def main():
     print("=" * 60, flush=True)
     blade_epochs, blade_total = run_blade(args.mnist_root, args.epochs, args.batch_size, args.lr)
 
-    torch_epochs, torch_total = [], 0.0
-    if not args.skip_torch:
+    torch_cpu_epochs, torch_cpu_total = [], 0.0
+    torch_cuda_epochs, torch_cuda_total = [], 0.0
+
+    if not args.skip_torch_cpu:
         try:
             tv_root = ensure_torchvision_data(args.mnist_root)
             print("=" * 60, flush=True)
-            print("PyTorch", flush=True)
+            print("PyTorch (CPU)", flush=True)
             print("=" * 60, flush=True)
-            torch_epochs, torch_total = run_torch(tv_root, args.epochs, args.batch_size, args.lr)
+            torch_cpu_epochs, torch_cpu_total = run_torch(
+                tv_root, args.epochs, args.batch_size, args.lr, device="cpu")
         except Exception as e:
-            print(f"[warn] PyTorch benchmark failed: {e}", file=sys.stderr)
+            print(f"[warn] PyTorch CPU benchmark failed: {e}", file=sys.stderr)
+
+    if not args.skip_torch_gpu:
+        try:
+            import torch
+            if torch.cuda.is_available():
+                tv_root = ensure_torchvision_data(args.mnist_root)
+                cuda_device = "cuda"
+                print("=" * 60, flush=True)
+                print(f"PyTorch (CUDA: {torch.cuda.get_device_name(0)})", flush=True)
+                print("=" * 60, flush=True)
+                torch_cuda_epochs, torch_cuda_total = run_torch(tv_root, args.epochs, args.batch_size, args.lr, device=cuda_device)
+            else:
+                print("[info] No CUDA device found; skipping PyTorch+CUDA benchmark.", flush=True)
+        except Exception as e:
+            print(f"[warn] PyTorch CUDA benchmark failed: {e}", file=sys.stderr)
 
     # summary table
-    print("\n" + "=" * 60, flush=True)
-    print(f"{'Epoch':>5}  {'BLADE loss':>10}  {'BLADE acc':>9}  "
-          f"{'Torch loss':>10}  {'Torch acc':>9}", flush=True)
-    print("-" * 60, flush=True)
+    have_cpu  = bool(torch_cpu_epochs)
+    have_cuda = bool(torch_cuda_epochs)
+
+    header = f"{'Epoch':>5}  {'BLADE loss':>10}  {'BLADE acc':>9}"
+    if have_cpu:
+        header += f"  {'CPU loss':>10}  {'CPU acc':>9}"
+    if have_cuda:
+        header += f"  {'CUDA loss':>10}  {'CUDA acc':>9}"
+    sep_width = max(60, len(header))
+
+    print("\n" + "=" * sep_width, flush=True)
+    print(header, flush=True)
+    print("-" * sep_width, flush=True)
     for i in range(args.epochs):
         br = blade_epochs[i]
-        if torch_epochs:
-            tr = torch_epochs[i]
-            print(f"{br['epoch']:>5}  {br['loss']:>10.4f}  {br['acc']:>9.4f}  "
-                  f"{tr['loss']:>10.4f}  {tr['acc']:>9.4f}", flush=True)
-        else:
-            print(f"{br['epoch']:>5}  {br['loss']:>10.4f}  {br['acc']:>9.4f}",
-                  flush=True)
-    print("=" * 60, flush=True)
-    if torch_epochs:
-        speedup = blade_total / torch_total if torch_total > 0 else float("inf")
-        print(f"Total time: BLADE={blade_total:.1f}s  "
-              f"PyTorch={torch_total:.1f}s  "
-              f"(PyTorch is {speedup:.1f}x faster)", flush=True)
-    else:
-        print(f"Total time: BLADE={blade_total:.1f}s", flush=True)
+        row = f"{br['epoch']:>5}  {br['loss']:>10.4f}  {br['acc']:>9.4f}"
+        if have_cpu:
+            cr = torch_cpu_epochs[i]
+            row += f"  {cr['loss']:>10.4f}  {cr['acc']:>9.4f}"
+        if have_cuda:
+            gr = torch_cuda_epochs[i]
+            row += f"  {gr['loss']:>10.4f}  {gr['acc']:>9.4f}"
+        print(row, flush=True)
+    print("=" * sep_width, flush=True)
+
+    time_line = f"Total time: BLADE={blade_total:.1f}s"
+    if have_cpu:
+        speedup_cpu = blade_total / torch_cpu_total if torch_cpu_total > 0 else float("inf")
+        time_line += f"  |  CPU={torch_cpu_total:.1f}s ({speedup_cpu:.1f}x faster than BLADE)"
+    if have_cuda:
+        speedup_cuda = blade_total / torch_cuda_total if torch_cuda_total > 0 else float("inf")
+        time_line += f"  |  CUDA={torch_cuda_total:.1f}s ({speedup_cuda:.1f}x faster than BLADE)"
+    print(time_line, flush=True)
 
     # JSON output
     result = {
         "blade": {"epochs": blade_epochs, "total_time_s": blade_total},
-        "torch": {"epochs": torch_epochs, "total_time_s": torch_total},
+        "torch_cpu": {"epochs": torch_cpu_epochs, "total_time_s": torch_cpu_total},
+        "torch_cuda": {"epochs": torch_cuda_epochs, "total_time_s": torch_cuda_total},
     }
     with open("benchmark_results.json", "w") as f:
         json.dump(result, f, indent=2)
