@@ -1,10 +1,9 @@
 """Simple MLP trained on MNIST using blade.
 
 Usage:
-    # 1. Download data (once)
+    # Download data
     python examples/download_mnist.py
-
-    # 2. Train
+    # Train
     python examples/train_mnist_mlp.py
 """
 import sys
@@ -16,8 +15,6 @@ import blade.nn as nn
 import blade.optim as optim
 import blade.data as data
 
-
-# ---- Model ------------------------------------------------------------------
 
 class MLP(nn.Module):
     def __init__(self):
@@ -35,14 +32,10 @@ class MLP(nn.Module):
         return self.fc3(x)
 
 
-# ---- Helpers ----------------------------------------------------------------
-
 def count_correct(logits, labels):
     preds = blade.ops.argmax(logits, 1)
     return sum(int(p) == int(l) for p, l in zip(preds.storage(), labels.storage()))
 
-
-# ---- Training ---------------------------------------------------------------
 
 def train(mnist_root="data/mnist", epochs=5, batch_size=64, lr=1e-3):
     train_ds = data.MNIST(mnist_root, data.MNISTSplit.Train)
